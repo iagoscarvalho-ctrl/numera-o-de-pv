@@ -23,33 +23,30 @@ export function distToPolyline(p: Vec2, poly: Polyline) {
   return best;
 }
 
-// Order polyline vertices from montante (upstream, highest ground) to
-// jusante (downstream, lowest ground), using the elevation (Z) interpolated
-// from the terrain surface (TIN) at each endpoint. This is what actually
-// decides which way sewage flows, so it's used as the primary criterion —
-// it no longer depends on which endpoint the user happened to click closer
-// to, which was fragile (a click a bit off could invert the whole sequence).
-//
-// `ref` is only used as a fallback: if both endpoints interpolate to
-// (nearly) the same elevation — e.g. missing TIN coverage at that spot —
-// there's nothing in the Z data to disambiguate, so we fall back to
-// whichever endpoint is closest to the reference click (treated as jusante,
-// ending up last).
-export function orderMontanteToJusante(poly: Polyline, faces: Face3D[], ref: Vec2): Vec2[] {
-  const first = poly.points[0];
-  const last = poly.points[poly.points.length - 1];
-  const zFirst = interpolateZ(first, faces);
-  const zLast = interpolateZ(last, faces);
-  const ELEVATION_TIE_EPS = 0.01; // meters
-
-  if (Math.abs(zFirst - zLast) > ELEVATION_TIE_EPS) {
-    // Higher elevation endpoint = montante -> must come FIRST.
-    return zFirst > zLast ? [...poly.points] : [...poly.points].reverse();
+// Finds the closest vertex, across all given polylines, to the click point
+// `p`, as long as it's within `maxDist` (already converted to world units by
+// the caller, since it depends on the current zoom level). Returns null if
+// nothing is close enough — i.e. the user clicked empty space.
+export function findNearestVertex(polylines: Polyline[], p: Vec2, maxDist: number): Vec2 | null {
+  let best: { v: Vec2; d: number } | null = null;
+  for (const poly of polylines) {
+    for (const v of poly.points) {
+      const d = dist(p, v);
+      if (d <= maxDist && (!best || d < best.d)) best = { v, d };
+    }
   }
+  return best ? best.v : null;
+}
 
-  // Fallback: no usable elevation difference, use the click reference.
-  const jusanteIsFirst = dist(ref, first) <= dist(ref, last);
-  return jusanteIsFirst ? [...poly.points].reverse() : [...poly.points];
+// Which polylines have a vertex within `tolerance` of `v` — i.e. which
+// segments physically meet at this node. Used to keep the PV's segment
+// links up to date even though numbering is now a single click per node.
+export function polylinesAtVertex(polylines: Polyline[], v: Vec2, tolerance: number): string[] {
+  const ids: string[] = [];
+  for (const poly of polylines) {
+    if (poly.points.some((pt) => dist(pt, v) <= tolerance)) ids.push(poly.id);
+  }
+  return ids;
 }
 
 // Barycentric interpolation of Z over a triangular face
