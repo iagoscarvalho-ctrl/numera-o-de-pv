@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Face3D, NumerationAction, PV, Polyline, Vec2 } from "./types";
-import { dist, interpolateZ, orderFromDownstream } from "./geometry";
+import { dist, interpolateZ, orderMontanteToJusante } from "./geometry";
 import { mockFaces, mockPolylines } from "./mockData";
 import type { ParsedDxf } from "./dxfParser";
 
@@ -163,7 +163,7 @@ export const usePVStore = create<State & Actions>((set, get) => ({
     const poly = polylines.find((p) => p.id === selectedPolylineId);
     if (!poly) return;
 
-    const ordered = orderFromDownstream(poly, referencePoint);
+    const ordered = orderMontanteToJusante(poly, faces, referencePoint);
     const nextPvs: Record<string, PV> = { ...pvs };
     const createdLabels: string[] = [];
     const previousCounter = counter;
