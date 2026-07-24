@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { usePVStore } from "@/lib/pv/store";
 import { exportPVs, downloadText } from "@/lib/pv/export";
+import { DxfUpload } from "./DxfUpload";
 
 export function ControlsPanel() {
   const {
@@ -32,10 +33,10 @@ export function ControlsPanel() {
     <div className="w-80 shrink-0 border-l border-slate-200 bg-white p-4 flex flex-col gap-4 overflow-y-auto">
       <div>
         <h2 className="text-lg font-semibold text-slate-800">Numeração de PVs</h2>
-        <p className="text-xs text-slate-500 mt-1">
-          Rede de esgoto — MVP com dados de exemplo.
-        </p>
+        <p className="text-xs text-slate-500 mt-1">Rede de esgoto — MVP com dados de exemplo.</p>
       </div>
+
+      <DxfUpload />
 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold text-slate-700">Contador</h3>
@@ -72,7 +73,7 @@ export function ControlsPanel() {
               Ref: {referencePoint ? `(${referencePoint.x.toFixed(2)}, ${referencePoint.y.toFixed(2)})` : "—"}
             </>
           ) : (
-            "Clique próximo à extremidade de jusante de uma polyline no canvas."
+            "Clique próximo à jusante de uma polyline no canvas — a numeração começa na montante e termina nesse ponto."
           )}
         </div>
         <div className="flex gap-2 pt-1">
@@ -114,9 +115,7 @@ export function ControlsPanel() {
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-slate-700">
-          PVs numerados ({pvList.length})
-        </h3>
+        <h3 className="text-sm font-semibold text-slate-700">PVs numerados ({pvList.length})</h3>
         <div className="max-h-48 overflow-y-auto border border-slate-200 rounded text-xs font-mono">
           {pvList.length === 0 ? (
             <div className="p-2 text-slate-400">Nenhum PV ainda.</div>
