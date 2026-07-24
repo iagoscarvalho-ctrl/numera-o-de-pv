@@ -24,7 +24,6 @@ export type PV = {
 };
 
 export type NumerationAction = {
-  createdLabels: string[]; // PVs created by this action (reusable ones excluded)
+  label: string; // the single PV created by this click
   previousCounter: number;
-  polylineId: string;
 };
