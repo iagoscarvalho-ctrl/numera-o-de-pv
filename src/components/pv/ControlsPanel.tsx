@@ -4,21 +4,7 @@ import { exportPVs, downloadText } from "@/lib/pv/export";
 import { DxfUpload } from "./DxfUpload";
 
 export function ControlsPanel() {
-  const {
-    tolerance,
-    setTolerance,
-    counter,
-    setCounter,
-    resetAll,
-    selectedPolylineId,
-    referencePoint,
-    applyNumeration,
-    undo,
-    history,
-    pvs,
-    selectPolyline,
-    setReferencePoint,
-  } = usePVStore();
+  const { tolerance, setTolerance, counter, setCounter, resetAll, undo, history, pvs, lastMessage } = usePVStore();
 
   const [sep, setSep] = useState<"," | ";">(",");
   const [header, setHeader] = useState(true);
@@ -51,7 +37,7 @@ export function ControlsPanel() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-600 w-24">Tolerância (m)</label>
+          <label className="text-xs text-slate-600 w-24">Tolerância nó (m)</label>
           <input
             type="number"
             step={0.01}
@@ -61,39 +47,23 @@ export function ControlsPanel() {
             className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm"
           />
         </div>
+        <p className="text-[11px] text-slate-400 leading-snug">
+          Raio usado para reconhecer que um clique caiu num nó já numerado (evita duplicar PV em nós compartilhados
+          entre quadras).
+        </p>
       </section>
 
       <section className="space-y-2 rounded border border-slate-200 p-3 bg-slate-50">
-        <h3 className="text-sm font-semibold text-slate-700">Ação atual</h3>
-        <div className="text-xs text-slate-600">
-          {selectedPolylineId ? (
-            <>
-              Polyline: <span className="font-mono">{selectedPolylineId}</span>
-              <br />
-              Ref: {referencePoint ? `(${referencePoint.x.toFixed(2)}, ${referencePoint.y.toFixed(2)})` : "—"}
-            </>
-          ) : (
-            "Clique próximo à jusante de uma polyline no canvas — a numeração começa na montante e termina nesse ponto."
-          )}
-        </div>
-        <div className="flex gap-2 pt-1">
-          <button
-            disabled={!selectedPolylineId || !referencePoint}
-            onClick={applyNumeration}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-sm rounded px-3 py-1.5"
-          >
-            Numerar
-          </button>
-          <button
-            onClick={() => {
-              selectPolyline(null);
-              setReferencePoint(null);
-            }}
-            className="text-sm border border-slate-300 rounded px-3 py-1.5 hover:bg-slate-100"
-          >
-            Cancelar
-          </button>
-        </div>
+        <h3 className="text-sm font-semibold text-slate-700">Como numerar</h3>
+        <p className="text-xs text-slate-600">
+          Clique num nó (vértice) no canvas para atribuir o próximo número da sequência a ele. A ordem dos PVs segue
+          exatamente a ordem dos seus cliques.
+        </p>
+        {lastMessage && (
+          <p className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1">
+            {lastMessage}
+          </p>
+        )}
       </section>
 
       <section className="flex gap-2">
