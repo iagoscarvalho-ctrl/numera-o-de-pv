@@ -1,24 +1,39 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { PVCanvas } from "@/components/pv/PVCanvas";
+import { ControlsPanel } from "@/components/pv/ControlsPanel";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Numeração de PVs — Rede de Esgoto" },
+      {
+        name: "description",
+        content:
+          "Ferramenta para numeração sequencial de poços de visita (PVs) em polylines de redes de esgoto, com zoom, pan e exportação CSV.",
+      },
+      { property: "og:title", content: "Numeração de PVs — Rede de Esgoto" },
+      {
+        property: "og:description",
+        content:
+          "Numeração sequencial de PVs em polylines, com reaproveitamento de nós compartilhados e exportação em UTM.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="flex h-screen w-screen bg-slate-100">
+      <main className="flex-1 p-4">
+        <h1 className="sr-only">Numeração de PVs em rede de esgoto</h1>
+        <div className="w-full h-full">
+          <PVCanvas />
+        </div>
+      </main>
+      <ControlsPanel />
     </div>
   );
 }
