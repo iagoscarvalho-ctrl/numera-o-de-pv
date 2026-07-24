@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Face3D, NumerationAction, PV, Polyline, Vec2 } from "./types";
-import { dist, interpolateZ, orderMontanteToJusante } from "./geometry";
+import { dist, findNearestVertex, interpolateZ, polylinesAtVertex } from "./geometry";
 import { mockFaces, mockPolylines } from "./mockData";
 import type { ParsedDxf } from "./dxfParser";
 
@@ -25,19 +25,16 @@ type State = {
 
   pvs: Record<string, PV>; // keyed by label
   counter: number; // next PV number to assign
-  tolerance: number; // meters
+  tolerance: number; // meters — radius used to recognize "this is the same node"
   history: NumerationAction[];
-  selectedPolylineId: string | null;
-  referencePoint: Vec2 | null;
+  lastMessage: string | null; // feedback for the last click (created / already numbered / missed)
 };
 
 type Actions = {
   setTolerance: (t: number) => void;
   setCounter: (n: number) => void;
   resetAll: () => void;
-  selectPolyline: (id: string | null) => void;
-  setReferencePoint: (p: Vec2 | null) => void;
-  applyNumeration: () => void;
+  clickVertex: (worldPoint: Vec2, maxClickDist: number) => void;
   undo: () => void;
   loadData: (polylines: Polyline[], faces: Face3D[]) => void;
   loadDxf: (parsed: ParsedDxf, fileName: string) => void;
@@ -51,6 +48,13 @@ function filterByLayer<T extends { layer?: string }>(items: T[], layers: string[
   const set = new Set(layers);
   return items.filter((i) => set.has(i.layer ?? "0"));
 }
+
+const emptyNumerationState = {
+  pvs: {} as Record<string, PV>,
+  counter: 1,
+  history: [] as NumerationAction[],
+  lastMessage: null as string | null,
+};
 
 export const usePVStore = create<State & Actions>((set, get) => ({
   polylines: mockPolylines,
@@ -67,29 +71,19 @@ export const usePVStore = create<State & Actions>((set, get) => ({
   selectedPolylineLayers: [],
   selectedFaceLayers: [],
 
-  pvs: {},
-  counter: 1,
   tolerance: 0.05,
-  history: [],
-  selectedPolylineId: null,
-  referencePoint: null,
+  ...emptyNumerationState,
 
   setTolerance: (t) => set({ tolerance: t }),
   setCounter: (n) => set({ counter: Math.max(1, Math.floor(n)) }),
-  resetAll: () => set({ pvs: {}, counter: 1, history: [], selectedPolylineId: null, referencePoint: null }),
-  selectPolyline: (id) => set({ selectedPolylineId: id }),
-  setReferencePoint: (p) => set({ referencePoint: p }),
+  resetAll: () => set({ ...emptyNumerationState }),
 
   loadData: (polylines, faces) =>
     set({
       polylines,
       faces,
       dataSource: "mock",
-      pvs: {},
-      counter: 1,
-      history: [],
-      selectedPolylineId: null,
-      referencePoint: null,
+      ...emptyNumerationState,
     }),
 
   loadMockData: () =>
@@ -105,11 +99,7 @@ export const usePVStore = create<State & Actions>((set, get) => ({
       availableFaceLayers: [],
       selectedPolylineLayers: [],
       selectedFaceLayers: [],
-      pvs: {},
-      counter: 1,
-      history: [],
-      selectedPolylineId: null,
-      referencePoint: null,
+      ...emptyNumerationState,
     }),
 
   loadDxf: (parsed, fileName) => {
@@ -127,11 +117,7 @@ export const usePVStore = create<State & Actions>((set, get) => ({
       selectedFaceLayers,
       polylines: filterByLayer(parsed.polylines, selectedPolylineLayers),
       faces: filterByLayer(parsed.faces, selectedFaceLayers),
-      pvs: {},
-      counter: 1,
-      history: [],
-      selectedPolylineId: null,
-      referencePoint: null,
+      ...emptyNumerationState,
     });
   },
 
@@ -141,11 +127,7 @@ export const usePVStore = create<State & Actions>((set, get) => ({
       selectedPolylineLayers: layers,
       polylines: filterByLayer(rawPolylines, layers),
       // Changing which segments are in play invalidates any numeration already done.
-      pvs: {},
-      counter: 1,
-      history: [],
-      selectedPolylineId: null,
-      referencePoint: null,
+      ...emptyNumerationState,
     });
   },
 
@@ -157,75 +139,51 @@ export const usePVStore = create<State & Actions>((set, get) => ({
     });
   },
 
-  applyNumeration: () => {
-    const { selectedPolylineId, referencePoint, polylines, faces, pvs, counter, tolerance } = get();
-    if (!selectedPolylineId || !referencePoint) return;
-    const poly = polylines.find((p) => p.id === selectedPolylineId);
-    if (!poly) return;
+  // Called on every canvas click. Finds the nearest vertex to the click
+  // (within `maxClickDist`, a pixel-derived threshold converted to world
+  // units by the caller) and, if it isn't already numbered, assigns it the
+  // next sequential PV number. The order PVs get numbered in is exactly the
+  // order the user clicks vertices — no automatic ordering by quadra,
+  // elevation, or click-reference direction anymore.
+  clickVertex: (worldPoint, maxClickDist) => {
+    const { polylines, faces, pvs, counter, tolerance } = get();
 
-    const ordered = orderMontanteToJusante(poly, faces, referencePoint);
-    const nextPvs: Record<string, PV> = { ...pvs };
-    const createdLabels: string[] = [];
-    const previousCounter = counter;
-    let cur = counter;
-
-    // Existing PVs list for proximity lookup
-    const existing = Object.values(nextPvs);
-
-    for (const v of ordered) {
-      const found = existing.find((e) => dist({ x: e.x, y: e.y }, v) <= tolerance);
-      if (found) {
-        if (!found.polylineIds.includes(poly.id)) found.polylineIds.push(poly.id);
-        continue;
-      }
-      const label = `PV${cur}`;
-      const z = interpolateZ(v, faces);
-      const pv: PV = {
-        label,
-        number: cur,
-        x: v.x,
-        y: v.y,
-        z,
-        polylineIds: [poly.id],
-      };
-      nextPvs[label] = pv;
-      existing.push(pv);
-      createdLabels.push(label);
-      cur += 1;
+    const hit = findNearestVertex(polylines, worldPoint, maxClickDist);
+    if (!hit) {
+      set({ lastMessage: "Nenhum vértice encontrado perto do clique — tente dar mais zoom." });
+      return;
     }
 
+    const already = Object.values(pvs).find((pv) => dist({ x: pv.x, y: pv.y }, hit) <= tolerance);
+    if (already) {
+      set({ lastMessage: `Esse nó já está numerado como ${already.label}.` });
+      return;
+    }
+
+    const label = `PV${counter}`;
+    const z = interpolateZ(hit, faces);
+    const polylineIds = polylinesAtVertex(polylines, hit, tolerance);
+    const pv: PV = { label, number: counter, x: hit.x, y: hit.y, z, polylineIds };
+
     set({
-      pvs: nextPvs,
-      counter: cur,
-      history: [...get().history, { createdLabels, previousCounter, polylineId: poly.id }],
-      referencePoint: null,
-      selectedPolylineId: null,
+      pvs: { ...pvs, [label]: pv },
+      counter: counter + 1,
+      history: [...get().history, { label, previousCounter: counter }],
+      lastMessage: `${label} criado.`,
     });
   },
 
   undo: () => {
-    const { history, pvs, polylines } = get();
+    const { history, pvs } = get();
     if (history.length === 0) return;
     const last = history[history.length - 1];
     const nextPvs: Record<string, PV> = { ...pvs };
-    for (const label of last.createdLabels) delete nextPvs[label];
-    // Also unlink polyline from reused PVs (best-effort: if PV still exists and
-    // was linked only via this action, remove the polyline id)
-    for (const pv of Object.values(nextPvs)) {
-      if (pv.polylineIds.includes(last.polylineId)) {
-        // Only remove if we can be reasonably sure this action added it.
-        // Simplest heuristic: if the polyline wasn't touched by any other kept action, unlink.
-        const stillReferenced = history.slice(0, -1).some((h) => h.polylineId === last.polylineId);
-        if (!stillReferenced) {
-          pv.polylineIds = pv.polylineIds.filter((id) => id !== last.polylineId);
-        }
-      }
-    }
-    void polylines;
+    delete nextPvs[last.label];
     set({
       pvs: nextPvs,
       counter: last.previousCounter,
       history: history.slice(0, -1),
+      lastMessage: `${last.label} desfeito.`,
     });
   },
 }));
