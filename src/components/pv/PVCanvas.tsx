@@ -1,19 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { usePVStore } from "@/lib/pv/store";
-import { distToPolyline } from "@/lib/pv/geometry";
+import { findNearestVertex } from "@/lib/pv/geometry";
 import type { Vec2 } from "@/lib/pv/types";
 
 type Transform = { scale: number; tx: number; ty: number };
 
+// How close (in screen pixels) a click/hover needs to be to a vertex to
+// "hit" it. Kept fairly generous since precise clicking on a dense network
+// is hard, especially on touch devices.
+const CLICK_PIXEL_RADIUS = 12;
+
 export function PVCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const { polylines, pvs, selectedPolylineId, referencePoint, selectPolyline, setReferencePoint } = usePVStore();
+  const { polylines, pvs, clickVertex } = usePVStore();
 
   const [transform, setTransform] = useState<Transform>({ scale: 1, tx: 0, ty: 0 });
   const [size, setSize] = useState({ w: 800, h: 600 });
   const panRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
+  const [hoverVertex, setHoverVertex] = useState<Vec2 | null>(null);
 
   // Resize observer
   useEffect(() => {
@@ -78,9 +84,8 @@ export function PVCanvas() {
 
     // polylines
     for (const poly of polylines) {
-      const selected = poly.id === selectedPolylineId;
-      ctx.strokeStyle = selected ? "#2563eb" : "#334155";
-      ctx.lineWidth = selected ? 2.5 : 1.5;
+      ctx.strokeStyle = "#334155";
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       poly.points.forEach((v, i) => {
         const s = toScreen(v);
@@ -108,6 +113,16 @@ export function PVCanvas() {
       }
     }
 
+    // Hover highlight — shows which vertex a click would hit right now
+    if (hoverVertex) {
+      const s = toScreen(hoverVertex);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
     // PV labels
     ctx.fillStyle = "#065f46";
     ctx.font = "12px system-ui, sans-serif";
@@ -115,23 +130,7 @@ export function PVCanvas() {
       const s = toScreen({ x: pv.x, y: pv.y });
       ctx.fillText(pv.label, s.x + 7, s.y - 7);
     }
-
-    // Reference point
-    if (referencePoint) {
-      const s = toScreen(referencePoint);
-      ctx.strokeStyle = "#dc2626";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(s.x - 10, s.y);
-      ctx.lineTo(s.x + 10, s.y);
-      ctx.moveTo(s.x, s.y - 10);
-      ctx.lineTo(s.x, s.y + 10);
-      ctx.stroke();
-    }
-  }, [size, transform, polylines, pvs, selectedPolylineId, referencePoint]);
+  }, [size, transform, polylines, pvs, hoverVertex]);
 
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -167,10 +166,18 @@ export function PVCanvas() {
   };
   const onMouseMove = (e: React.MouseEvent) => {
     const pan = panRef.current;
-    if (!pan) return;
-    const dx = e.clientX - pan.x;
-    const dy = e.clientY - pan.y;
-    setTransform((t) => ({ ...t, tx: pan.tx + dx, ty: pan.ty + dy }));
+    if (pan) {
+      const dx = e.clientX - pan.x;
+      const dy = e.clientY - pan.y;
+      setTransform((t) => ({ ...t, tx: pan.tx + dx, ty: pan.ty + dy }));
+      return;
+    }
+    // Not panning: highlight the vertex a click would currently hit.
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    const maxDist = CLICK_PIXEL_RADIUS / transform.scale;
+    setHoverVertex(findNearestVertex(polylines, world, maxDist));
   };
   const onMouseUp = () => {
     panRef.current = null;
@@ -183,20 +190,8 @@ export function PVCanvas() {
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const world = toWorld(sx, sy);
-
-    if (!selectedPolylineId) {
-      // pick nearest polyline within threshold (converted to world units)
-      const threshold = 10 / transform.scale; // 10px in world units
-      let best: { id: string; d: number } | null = null;
-      for (const poly of polylines) {
-        const d = distToPolyline(world, poly);
-        if (d <= threshold && (!best || d < best.d)) best = { id: poly.id, d };
-      }
-      if (best) {
-        setReferencePoint(world);
-        selectPolyline(best.id);
-      }
-    }
+    const maxDist = CLICK_PIXEL_RADIUS / transform.scale;
+    clickVertex(world, maxDist);
   };
 
   return (
@@ -211,7 +206,10 @@ export function PVCanvas() {
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
+        onMouseLeave={() => {
+          onMouseUp();
+          setHoverVertex(null);
+        }}
         onClick={onClick}
         onContextMenu={(e) => e.preventDefault()}
       />
@@ -230,7 +228,7 @@ export function PVCanvas() {
         </button>
       </div>
       <div className="absolute top-3 left-3 text-xs bg-white/90 border border-slate-200 rounded px-2 py-1 text-slate-600">
-        Roda: zoom · Shift+arrastar: pan · Clique próximo à jusante (numeração começa na montante e termina nesse ponto)
+        Roda: zoom · Shift+arrastar: pan · Clique num nó para numerar (na ordem que for clicando)
       </div>
     </div>
   );
