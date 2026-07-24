@@ -8,14 +8,7 @@ type Transform = { scale: number; tx: number; ty: number };
 export function PVCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const {
-    polylines,
-    pvs,
-    selectedPolylineId,
-    referencePoint,
-    selectPolyline,
-    setReferencePoint,
-  } = usePVStore();
+  const { polylines, pvs, selectedPolylineId, referencePoint, selectPolyline, setReferencePoint } = usePVStore();
 
   const [transform, setTransform] = useState<Transform>({ scale: 1, tx: 0, ty: 0 });
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -99,9 +92,7 @@ export function PVCanvas() {
       // vertices (unnumbered = hollow, numbered = filled)
       for (const v of poly.points) {
         const s = toScreen(v);
-        const numbered = Object.values(pvs).find(
-          (pv) => Math.hypot(pv.x - v.x, pv.y - v.y) <= 0.05,
-        );
+        const numbered = Object.values(pvs).find((pv) => Math.hypot(pv.x - v.x, pv.y - v.y) <= 0.05);
         ctx.beginPath();
         ctx.arc(s.x, s.y, 4, 0, Math.PI * 2);
         if (numbered) {
@@ -209,7 +200,10 @@ export function PVCanvas() {
   };
 
   return (
-    <div ref={wrapRef} className="relative w-full h-full bg-slate-50 border border-slate-200 rounded-md overflow-hidden">
+    <div
+      ref={wrapRef}
+      className="relative w-full h-full bg-slate-50 border border-slate-200 rounded-md overflow-hidden"
+    >
       <canvas
         ref={canvasRef}
         style={{ width: size.w, height: size.h, cursor: isPanning ? "grabbing" : "crosshair", display: "block" }}
@@ -236,7 +230,7 @@ export function PVCanvas() {
         </button>
       </div>
       <div className="absolute top-3 left-3 text-xs bg-white/90 border border-slate-200 rounded px-2 py-1 text-slate-600">
-        Roda: zoom · Shift+arrastar: pan · Clique próximo à extremidade de jusante
+        Roda: zoom · Shift+arrastar: pan · Clique próximo à jusante (numeração começa na montante e termina nesse ponto)
       </div>
     </div>
   );
