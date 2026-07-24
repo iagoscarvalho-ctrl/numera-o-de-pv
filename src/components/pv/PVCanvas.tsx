@@ -166,11 +166,11 @@ export function PVCanvas() {
     }
   };
   const onMouseMove = (e: React.MouseEvent) => {
-    if (panRef.current) {
-      const dx = e.clientX - panRef.current.x;
-      const dy = e.clientY - panRef.current.y;
-      setTransform((t) => ({ ...t, tx: panRef.current!.tx + dx, ty: panRef.current!.ty + dy }));
-    }
+    const pan = panRef.current;
+    if (!pan) return;
+    const dx = e.clientX - pan.x;
+    const dy = e.clientY - pan.y;
+    setTransform((t) => ({ ...t, tx: pan.tx + dx, ty: pan.ty + dy }));
   };
   const onMouseUp = () => {
     panRef.current = null;
