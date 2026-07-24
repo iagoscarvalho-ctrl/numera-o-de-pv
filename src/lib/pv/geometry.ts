@@ -23,16 +23,31 @@ export function distToPolyline(p: Vec2, poly: Polyline) {
   return best;
 }
 
-// Order polyline vertices from montante (upstream) to jusante (downstream).
-// `ref` is the point the user clicks near the jusante (downstream) extremity
-// of the polyline. That endpoint ends up LAST in the returned sequence
-// (receives the highest PV number); the opposite endpoint (montante) ends up
-// FIRST (receives the lowest PV number / starts the count).
-export function orderFromDownstream(poly: Polyline, ref: Vec2): Vec2[] {
+// Order polyline vertices from montante (upstream, highest ground) to
+// jusante (downstream, lowest ground), using the elevation (Z) interpolated
+// from the terrain surface (TIN) at each endpoint. This is what actually
+// decides which way sewage flows, so it's used as the primary criterion —
+// it no longer depends on which endpoint the user happened to click closer
+// to, which was fragile (a click a bit off could invert the whole sequence).
+//
+// `ref` is only used as a fallback: if both endpoints interpolate to
+// (nearly) the same elevation — e.g. missing TIN coverage at that spot —
+// there's nothing in the Z data to disambiguate, so we fall back to
+// whichever endpoint is closest to the reference click (treated as jusante,
+// ending up last).
+export function orderMontanteToJusante(poly: Polyline, faces: Face3D[], ref: Vec2): Vec2[] {
   const first = poly.points[0];
   const last = poly.points[poly.points.length - 1];
-  // Endpoint closest to `ref` is jusante and must end up last -> if it's
-  // `first`, the whole sequence needs to be reversed so it lands at the end.
+  const zFirst = interpolateZ(first, faces);
+  const zLast = interpolateZ(last, faces);
+  const ELEVATION_TIE_EPS = 0.01; // meters
+
+  if (Math.abs(zFirst - zLast) > ELEVATION_TIE_EPS) {
+    // Higher elevation endpoint = montante -> must come FIRST.
+    return zFirst > zLast ? [...poly.points] : [...poly.points].reverse();
+  }
+
+  // Fallback: no usable elevation difference, use the click reference.
   const jusanteIsFirst = dist(ref, first) <= dist(ref, last);
   return jusanteIsFirst ? [...poly.points].reverse() : [...poly.points];
 }
