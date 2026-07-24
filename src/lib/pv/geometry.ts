@@ -23,12 +23,18 @@ export function distToPolyline(p: Vec2, poly: Polyline) {
   return best;
 }
 
-// Order polyline vertices starting from the endpoint closest to `ref`
+// Order polyline vertices from montante (upstream) to jusante (downstream).
+// `ref` is the point the user clicks near the jusante (downstream) extremity
+// of the polyline. That endpoint ends up LAST in the returned sequence
+// (receives the highest PV number); the opposite endpoint (montante) ends up
+// FIRST (receives the lowest PV number / starts the count).
 export function orderFromDownstream(poly: Polyline, ref: Vec2): Vec2[] {
   const first = poly.points[0];
   const last = poly.points[poly.points.length - 1];
-  const reversed = dist(ref, last) < dist(ref, first);
-  return reversed ? [...poly.points].reverse() : [...poly.points];
+  // Endpoint closest to `ref` is jusante and must end up last -> if it's
+  // `first`, the whole sequence needs to be reversed so it lands at the end.
+  const jusanteIsFirst = dist(ref, first) <= dist(ref, last);
+  return jusanteIsFirst ? [...poly.points].reverse() : [...poly.points];
 }
 
 // Barycentric interpolation of Z over a triangular face
